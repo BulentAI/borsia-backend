@@ -133,36 +133,37 @@ router.delete('/cleanup-users', requireAuth, requireAdmin, async (req, res) => {
   try {
     const keepEmails = ['admin@borsia.com', 'demo@borsia.com'];
     
-    // Silinecek kullanıcıları bul
     const toDelete = await prisma.user.findMany({
       where: { email: { notIn: keepEmails } },
       select: { id: true, email: true }
     });
 
-    // İlişkili verileri sil
-    for (const user of toDelete) {
-      await prisma.aiRecentPrompt.deleteMany({ where: { userId: user.id } });
-      await prisma.aiUsage.deleteMany({ where: { userId: user.id } });
-      await prisma.favorite.deleteMany({ where: { userId: user.id } });
-      await prisma.analysis.deleteMany({ where: { authorId: user.id } });
-      await prisma.userPreference.deleteMany({ where: { userId: user.id } });
-      await prisma.subscription.deleteMany({ where: { userId: user.id } });
+    if (!toDelete.length) {
+      return res.json({ message: 'Silinecek kullanıcı yok.', kept: keepEmails, deleted: [] });
     }
 
-    // Kullanıcıları sil
-    const result = await prisma.user.deleteMany({
-      where: { email: { notIn: keepEmails } }
-    });
+    const userIds = toDelete.map(u => u.id);
 
-    console.log(`🗑️ ${result.count} test kullanıcı silindi`);
+    // Cascade olmayan ilişkileri elle sil
+    await prisma.aIRecentPrompt.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.aIUsage.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.favorite.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.subscription.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.userPreference.deleteMany({ where: { userId: { in: userIds } } });
+    // Analysis authorId SetNull olduğu için null yap
+    await prisma.analysis.updateMany({ where: { authorId: { in: userIds } }, data: { authorId: null } });
+    // Kullanıcıları sil
+    const result = await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+
+    console.log('Silindi: ' + result.count + ' kullanici');
     res.json({ 
-      message: `${result.count} test kullanıcı silindi.`,
+      message: result.count + ' test kullanici silindi.',
       kept: keepEmails,
       deleted: toDelete.map(u => u.email)
     });
   } catch (err) {
-    console.error('Cleanup hatası:', err.message);
-    res.status(500).json({ error: 'Temizlik sırasında hata oluştu: ' + err.message });
+    console.error('Cleanup hatasi:', err.message);
+    res.status(500).json({ error: 'Temizlik hatasi: ' + err.message });
   }
 });
 
