@@ -128,4 +128,42 @@ router.get('/ai-usage', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// ─── DELETE /api/admin/cleanup-users — Test kullanıcılarını sil ───
+router.delete('/cleanup-users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const keepEmails = ['admin@borsia.com', 'demo@borsia.com'];
+    
+    // Silinecek kullanıcıları bul
+    const toDelete = await prisma.user.findMany({
+      where: { email: { notIn: keepEmails } },
+      select: { id: true, email: true }
+    });
+
+    // İlişkili verileri sil
+    for (const user of toDelete) {
+      await prisma.aiRecentPrompt.deleteMany({ where: { userId: user.id } });
+      await prisma.aiUsage.deleteMany({ where: { userId: user.id } });
+      await prisma.favorite.deleteMany({ where: { userId: user.id } });
+      await prisma.analysis.deleteMany({ where: { authorId: user.id } });
+      await prisma.userPreference.deleteMany({ where: { userId: user.id } });
+      await prisma.subscription.deleteMany({ where: { userId: user.id } });
+    }
+
+    // Kullanıcıları sil
+    const result = await prisma.user.deleteMany({
+      where: { email: { notIn: keepEmails } }
+    });
+
+    console.log(`🗑️ ${result.count} test kullanıcı silindi`);
+    res.json({ 
+      message: `${result.count} test kullanıcı silindi.`,
+      kept: keepEmails,
+      deleted: toDelete.map(u => u.email)
+    });
+  } catch (err) {
+    console.error('Cleanup hatası:', err.message);
+    res.status(500).json({ error: 'Temizlik sırasında hata oluştu: ' + err.message });
+  }
+});
+
 module.exports = router;
