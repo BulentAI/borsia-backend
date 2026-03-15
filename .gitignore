@@ -1,0 +1,8 @@
+node_modules/
+.env
+uploads/charts/*
+!uploads/charts/.gitkeep
+prisma/migrations/
+*.log
+.DS_Store
+dist/

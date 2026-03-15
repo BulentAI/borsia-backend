@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: borsia-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && npx prisma db push
+    startCommand: node src/server.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://borsia.com.tr

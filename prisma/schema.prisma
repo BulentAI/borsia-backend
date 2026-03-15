@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───
+
+enum Role {
+  user
+  admin
+}
+
+enum Plan {
+  free
+  pro
+  premium
+}
+
+enum AnalysisStatus {
+  active
+  archived
+}
+
+enum SubscriptionStatus {
+  active
+  canceled
+  past_due
+  trialing
+  incomplete
+}
+
+// ─── USERS ───
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(user)
+  plan         Plan     @default(free)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  analyses     Analysis[]
+  favorites    Favorite[]
+  aiUsage      AIUsage[]
+  recentPrompts AIRecentPrompt[]
+  subscription Subscription?
+  preferences  UserPreference?
+
+  @@map("users")
+}
+
+// ─── USER PREFERENCES ───
+
+model UserPreference {
+  id             String  @id @default(uuid())
+  userId         String  @unique
+  notifications  Boolean @default(true)
+  marketEmails   Boolean @default(false)
+  rememberTheme  Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+// ─── ANALYSES ───
+
+model Analysis {
+  id          String         @id @default(uuid())
+  title       String
+  category    String
+  symbol      String
+  summary     String
+  detail      String         @db.Text
+  risk        String         @default("Orta")
+  plan        Plan           @default(free)
+  status      AnalysisStatus @default(active)
+  featured    Boolean        @default(false)
+  subcategory String?
+  tags        String[]
+  chartUrls   String[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  authorId    String?
+  author      User?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  favorites   Favorite[]
+
+  @@index([category])
+  @@index([symbol])
+  @@index([plan])
+  @@index([status])
+  @@index([featured])
+  @@map("analyses")
+}
+
+// ─── FAVORITES ───
+
+model Favorite {
+  id         String   @id @default(uuid())
+  userId     String
+  analysisId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, analysisId])
+  @@map("favorites")
+}
+
+// ─── AI USAGE (daily limit tracking) ───
+
+model AIUsage {
+  id        String   @id @default(uuid())
+  userId    String
+  date      DateTime @db.Date
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("ai_usage")
+}
+
+// ─── AI RECENT PROMPTS ───
+
+model AIRecentPrompt {
+  id        String   @id @default(uuid())
+  userId    String
+  prompt    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("ai_recent_prompts")
+}
+
+// ─── SUBSCRIPTIONS (Stripe) ───
+
+model Subscription {
+  id                    String             @id @default(uuid())
+  userId                String             @unique
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  plan                  Plan               @default(free)
+  status                SubscriptionStatus @default(active)
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean            @default(false)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ─── CONTACT MESSAGES ───
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@map("contact_messages")
+}
