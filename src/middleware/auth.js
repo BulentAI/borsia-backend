@@ -1,38 +1,48 @@
 // ═══════════════════════════════════════════════
-// BORSiA — Auth Middleware
+// BORSiA — Auth Middleware (Token-based, cross-domain)
 // ═══════════════════════════════════════════════
 
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-/**
- * requireAuth — oturum kontrolü
- * Session cookie'den userId alır, DB'den kullanıcıyı çeker
- */
+const SECRET = process.env.SESSION_SECRET || 'borsia-default-secret';
+
+function generateToken(userId) {
+  const sig = crypto.createHmac('sha256', SECRET).update(userId).digest('hex');
+  return Buffer.from(userId + ':' + sig).toString('base64');
+}
+
+function verifyToken(token) {
+  try {
+    const decoded = Buffer.from(token, 'base64').toString('utf8');
+    const parts = decoded.split(':');
+    const userId = parts[0];
+    const sig = parts[1];
+    if (!userId || !sig) return null;
+    const expected = crypto.createHmac('sha256', SECRET).update(userId).digest('hex');
+    return sig === expected ? userId : null;
+  } catch (e) { return null; }
+}
+
+function getUserIdFromRequest(req) {
+  var authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) {
+    var userId = verifyToken(authHeader.slice(7));
+    if (userId) return userId;
+  }
+  return (req.session && req.session.userId) || null;
+}
+
 async function requireAuth(req, res, next) {
   try {
-    const userId = req.session?.userId;
-    if (!userId) {
-      return res.status(401).json({ error: 'Oturum gerekli. Lütfen giriş yapın.' });
-    }
-
-    const user = await prisma.user.findUnique({
+    var userId = getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ error: 'Oturum gerekli. Lütfen giriş yapın.' });
+    var user = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        plan: true,
-        createdAt: true
-      }
+      select: { id: true, name: true, email: true, role: true, plan: true, createdAt: true }
     });
-
-    if (!user) {
-      req.session.destroy();
-      return res.status(401).json({ error: 'Kullanıcı bulunamadı. Lütfen tekrar giriş yapın.' });
-    }
-
+    if (!user) return res.status(401).json({ error: 'Kullanıcı bulunamadı.' });
     req.user = user;
     next();
   } catch (err) {
@@ -41,38 +51,20 @@ async function requireAuth(req, res, next) {
   }
 }
 
-/**
- * requireAdmin — admin rolü kontrolü
- * requireAuth'tan SONRA kullanılmalı
- */
 function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Bu işlem için admin yetkisi gerekli.' });
-  }
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin yetkisi gerekli.' });
   next();
 }
 
-/**
- * optionalAuth — opsiyonel auth
- * Giriş yapılmışsa req.user set eder, yapılmamışsa null
- */
 async function optionalAuth(req, res, next) {
   try {
-    const userId = req.session?.userId;
+    var userId = getUserIdFromRequest(req);
     if (userId) {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true, name: true, email: true, role: true, plan: true }
-      });
+      var user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, role: true, plan: true } });
       req.user = user || null;
-    } else {
-      req.user = null;
-    }
+    } else { req.user = null; }
     next();
-  } catch {
-    req.user = null;
-    next();
-  }
+  } catch (e) { req.user = null; next(); }
 }
 
-module.exports = { requireAuth, requireAdmin, optionalAuth };
+module.exports = { requireAuth, requireAdmin, optionalAuth, generateToken, verifyToken };
