@@ -35,12 +35,13 @@ router.get('/', requireAuth, async (req, res) => {
     const rawItems = await response.json();
     const items = (Array.isArray(rawItems) ? rawItems : []).slice(0, 30).map(item => ({
       id: String(item.id || item.datetime || Math.random()),
-      title: item.headline || item.title || 'Başlık yok',
+      headline: item.headline || item.title || 'Başlık yok',
       summary: item.summary || '',
+      aiSummary: item.summary || '',
       source: item.source || 'Bilinmiyor',
       url: item.url || '#',
       image: item.image || '',
-      category: item.category || category,
+      topic: item.category || category,
       datetime: item.datetime ? new Date(item.datetime * 1000).toISOString() : new Date().toISOString(),
       related: item.related || ''
     }));
@@ -56,12 +57,8 @@ router.get('/', requireAuth, async (req, res) => {
       digest: items.length > 0
         ? `${items.length} haber ${Object.keys(sources).length} kaynaktan alındı. Son güncelleme: ${new Date().toLocaleTimeString('tr-TR')}`
         : 'Şu an haber akışı boş.',
-      meta: {
-        total: items.length,
-        sources: Object.keys(sources).length,
-        updatedAt: new Date().toISOString()
-      },
-      sourceBreakdown: sources,
+      meta: `${items.length} haber, ${Object.keys(sources).length} kaynak`,
+      sourceBreakdown: Object.entries(sources).map(([k, v]) => ({ label: k, value: v })),
       live: true,
       provider: 'finnhub'
     };
