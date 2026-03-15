@@ -5,7 +5,7 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const { PrismaClient } = require('@prisma/client');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, generateToken } = require('../middleware/auth');
 const { validate, registerSchema, loginSchema } = require('../utils/validators');
 
 const router = express.Router();
@@ -50,12 +50,14 @@ router.post('/register', validate(registerSchema), async (req, res) => {
       data: { userId: user.id }
     });
 
-    // Session başlat
+    // Session + Token
     req.session.userId = user.id;
+    const token = generateToken(user.id);
 
     res.status(201).json({
       message: 'Kayıt başarılı. Hoş geldiniz!',
-      user
+      user,
+      token
     });
   } catch (err) {
     console.error('Register hatası:', err.message);
@@ -83,11 +85,13 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       return res.status(401).json({ error: 'E-posta veya şifre hatalı.' });
     }
 
-    // Session başlat
+    // Session + Token
     req.session.userId = user.id;
+    const token = generateToken(user.id);
 
     res.json({
       message: 'Giriş başarılı.',
+      token,
       user: {
         id: user.id,
         name: user.name,
